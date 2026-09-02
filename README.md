@@ -55,7 +55,7 @@ File
 
 ```bash
 uv run lob-document --help
-uv run lob-document parse samples/baseline.pdf --output artifacts/baseline.json
+uv run lob-document parse samples/baseline.pdf --output artifacts/baseline.json --markdown artifacts/baseline.md
 uv run lob-document schema --output artifacts/source-document.schema.json
 ```
 
@@ -65,6 +65,8 @@ uv run lob-document schema --output artifacts/source-document.schema.json
 
 页面坐标使用 PDF point（1/72 英寸），原点位于页面左上角，`x` 向右、`y` 向下。解析器会拆分
 同一底层文本块中横向分离的内容，按视觉行从上到下、同行从左到右排列，并初步标记标题、页眉和页脚。
+文档树会排除页眉页脚、归一化段内换行并组织标题和正文；Markdown 中的 `source` 注释保留页码、
+坐标和来源块 ID，可用于回跳原文。
 
 ## 项目边界
 

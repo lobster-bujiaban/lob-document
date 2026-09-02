@@ -103,11 +103,28 @@ class Page(StrictModel):
     diagnostics: list[Diagnostic] = Field(default_factory=list)
 
 
+class DocumentNode(StrictModel):
+    id: str
+    type: BlockType
+    text: str | None = None
+    heading_level: int | None = Field(default=None, ge=1, le=6)
+    source_block_ids: list[str] = Field(default_factory=list)
+    source_refs: list[SourceRef] = Field(default_factory=list)
+    children: list[DocumentNode] = Field(default_factory=list)
+
+
+class DocumentTree(StrictModel):
+    id: str
+    title: str
+    children: list[DocumentNode] = Field(default_factory=list)
+
+
 class SourceDocument(StrictModel):
-    schema_version: str = "1.1"
+    schema_version: str = "1.2"
     source: FileIdentity
     page_count: int = Field(ge=0)
     pages: list[Page] = Field(default_factory=list)
+    document_tree: DocumentTree | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
     diagnostics: list[Diagnostic] = Field(default_factory=list)
 

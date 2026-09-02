@@ -172,8 +172,10 @@ def _extract_blocks(pdf_page: pymupdf.Page, document_id: str, page_number: int) 
             block_type = BlockType.HEADER
         elif block_bbox.y0 >= pdf_page.rect.height * 0.94:
             block_type = BlockType.FOOTER
-        elif len(text) <= 40 and max(span.font_size or 0 for span in spans) >= body_size * 1.3:
-            block_type = BlockType.HEADING
+        elif len(text) <= 40:
+            size_ratio = max(span.font_size or 0 for span in spans) / body_size
+            if 1.3 <= size_ratio < 1.9 or size_ratio >= 3.0:
+                block_type = BlockType.HEADING
         fingerprint = f"{page_number}:{block_bbox.model_dump_json()}:{text}".encode()
         block_id = f"{document_id}_block_{hashlib.sha256(fingerprint).hexdigest()[:16]}"
         source_ref = SourceRef(document_id=document_id, page_number=page_number, bbox=block_bbox)
