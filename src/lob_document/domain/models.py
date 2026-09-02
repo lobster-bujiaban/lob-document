@@ -33,6 +33,10 @@ class DiagnosticSeverity(StrEnum):
     ERROR = "error"
 
 
+class CoordinateSystem(StrEnum):
+    PDF_POINTS_TOP_LEFT = "pdf_points_top_left"
+
+
 class FileIdentity(StrictModel):
     id: str = Field(description="Stable content-derived document ID")
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -67,6 +71,14 @@ class Diagnostic(StrictModel):
     source_ref: SourceRef | None = None
 
 
+class TextSpan(StrictModel):
+    text: str
+    bbox: BoundingBox
+    font_name: str | None = None
+    font_size: float | None = Field(default=None, gt=0)
+    flags: int = Field(default=0, ge=0)
+
+
 class Block(StrictModel):
     id: str
     type: BlockType
@@ -76,6 +88,7 @@ class Block(StrictModel):
     source_method: SourceMethod
     confidence: float | None = Field(default=None, ge=0, le=1)
     source_ref: SourceRef
+    spans: list[TextSpan] = Field(default_factory=list)
     diagnostics: list[Diagnostic] = Field(default_factory=list)
 
 
@@ -85,12 +98,13 @@ class Page(StrictModel):
     width: float = Field(gt=0, description="Page width in PDF points")
     height: float = Field(gt=0, description="Page height in PDF points")
     rotation: int = Field(default=0, description="Clockwise rotation in degrees")
+    coordinate_system: CoordinateSystem = CoordinateSystem.PDF_POINTS_TOP_LEFT
     blocks: list[Block] = Field(default_factory=list)
     diagnostics: list[Diagnostic] = Field(default_factory=list)
 
 
 class SourceDocument(StrictModel):
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"
     source: FileIdentity
     page_count: int = Field(ge=0)
     pages: list[Page] = Field(default_factory=list)

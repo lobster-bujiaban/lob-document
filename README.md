@@ -59,8 +59,12 @@ uv run lob-document parse samples/baseline.pdf --output artifacts/baseline.json
 uv run lob-document schema --output artifacts/source-document.schema.json
 ```
 
-阶段 0 的 `parse` 命令读取 PDF 文件身份、页数、页面尺寸和旋转信息，暂不提取正文；
-文件 ID 基于内容哈希生成，同一输入可重复得到稳定结构。
+`parse` 命令读取 PDF 文件身份、页面结构和原生文本层，输出文本块、坐标、字体、字号与阅读顺序；
+文件和节点 ID 基于内容生成，同一输入可重复得到稳定结构。没有原生文本层的页面会输出
+`no_native_text` 诊断，供后续 OCR 阶段处理。
+
+页面坐标使用 PDF point（1/72 英寸），原点位于页面左上角，`x` 向右、`y` 向下。解析器会拆分
+同一底层文本块中横向分离的内容，按视觉行从上到下、同行从左到右排列，并初步标记标题、页眉和页脚。
 
 ## 项目边界
 

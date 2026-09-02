@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from lob_document.domain import SourceDocument
-from lob_document.loaders import load_pdf_baseline
+from lob_document.loaders import load_pdf
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Traceable document parsing for AI and RAG",
     )
     subparsers = parser.add_subparsers(dest="command")
-    parse_parser = subparsers.add_parser("parse", help="create a baseline document JSON")
+    parse_parser = subparsers.add_parser("parse", help="extract native PDF text and structure")
     parse_parser.add_argument("source", type=Path, help="PDF path to parse")
     parse_parser.add_argument("--output", "-o", type=Path, help="output JSON path (stdout by default)")
     schema_parser = subparsers.add_parser("schema", help="print the SourceDocument JSON Schema")
@@ -45,7 +45,7 @@ def main() -> None:
         if args.command == "schema":
             _write_json(SourceDocument.model_json_schema(), args.output)
             return
-        document = load_pdf_baseline(args.source)
+        document = load_pdf(args.source)
         _write_json(document.model_dump(mode="json"), args.output)
     except (FileNotFoundError, ValueError, OSError, ValidationError) as exc:
         parser.exit(2, f"lob-document: error: {exc}\n")
