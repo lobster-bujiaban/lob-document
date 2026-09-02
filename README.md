@@ -55,7 +55,12 @@ File
 
 ```bash
 uv run lob-document --help
+uv run lob-document parse samples/baseline.pdf --output artifacts/baseline.json
+uv run lob-document schema --output artifacts/source-document.schema.json
 ```
+
+阶段 0 的 `parse` 命令读取 PDF 文件身份、页数、页面尺寸和旋转信息，暂不提取正文；
+文件 ID 基于内容哈希生成，同一输入可重复得到稳定结构。
 
 ## 项目边界
 
