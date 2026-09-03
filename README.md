@@ -68,6 +68,22 @@ uv run lob-document schema --output artifacts/source-document.schema.json
 文档树会排除页眉页脚、归一化段内换行并组织标题和正文；Markdown 中的 `source` 注释保留页码、
 坐标和来源块 ID，可用于回跳原文。
 
+OCR 默认使用 `auto` 模式：有效原生文本不足时才调用本地 Tesseract。可通过 `--ocr never` 禁用，
+或用 `--ocr always` 强制执行并与原生文本去重；`--ocr-language` 用于指定语言。OCR 引擎通过
+统一接口注入，云端适配器必须显式标记为云服务，并且只有策略明确允许时才能接收页面数据。
+
+SiliconFlow 云端 OCR 使用视觉模型和 `/chat/completions` 接口。复制 `.env.example` 为 `.env` 并填写
+`SILICONFLOW_API_KEY`，然后显式选择并允许云端处理：
+
+```bash
+uv run lob-document parse samples/scanned.pdf \
+  --ocr auto --ocr-engine siliconflow --allow-cloud-ocr \
+  --output artifacts/scanned.json --markdown artifacts/scanned.md
+```
+
+只有触发 OCR 的页面会以 JPEG 图片上传；原始 PDF 不会整体上传。模型可通过
+`SILICONFLOW_OCR_MODEL` 调整，默认使用 `PaddlePaddle/PaddleOCR-VL-1.5`。
+
 ## 项目边界
 
 - 文档解析和结构恢复属于本项目；向量索引与检索属于 `lob-vector`。

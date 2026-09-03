@@ -19,6 +19,7 @@ from lob_document.domain import (
     SourceRef,
     TextSpan,
 )
+from lob_document.ocr import OcrEngine, OcrMode, OcrPageResult, OcrPolicy, TesseractOcrEngine
 
 
 def _sha256(path: Path) -> str:
@@ -187,6 +188,8 @@ def _extract_blocks(pdf_page: pymupdf.Page, document_id: str, page_number: int) 
                 bbox=block_bbox,
                 reading_order=reading_order,
                 source_method=SourceMethod.NATIVE,
+                source_engine="pymupdf",
+                source_engine_version=pymupdf.__version__,
                 confidence=1.0,
                 source_ref=source_ref,
                 spans=spans,
@@ -195,7 +198,58 @@ def _extract_blocks(pdf_page: pymupdf.Page, document_id: str, page_number: int) 
     return extracted
 
 
-def load_pdf(path: Path) -> SourceDocument:
+def _ocr_blocks(result: OcrPageResult, document_id: str, page_number: int) -> list[Block]:
+    extracted = []
+    for index, line in enumerate(result.lines):
+        text = line.text.strip()
+        block_bbox = _bbox(line.bbox)
+        fingerprint = f"{page_number}:{block_bbox.model_dump_json()}:{text}".encode()
+        source_ref = SourceRef(document_id=document_id, page_number=page_number, bbox=block_bbox)
+        extracted.append(
+            Block(
+                id=f"{document_id}_block_{hashlib.sha256(fingerprint).hexdigest()[:16]}",
+                type=BlockType.PARAGRAPH,
+                text=text,
+                bbox=block_bbox,
+                reading_order=index,
+                source_method=SourceMethod.OCR,
+                source_engine=result.engine,
+                source_engine_version=result.engine_version,
+                confidence=line.confidence,
+                source_ref=source_ref,
+            )
+        )
+    return extracted
+
+
+def _overlap_ratio(left: BoundingBox, right: BoundingBox) -> float:
+    width = max(0.0, min(left.x1, right.x1) - max(left.x0, right.x0))
+    height = max(0.0, min(left.y1, right.y1) - max(left.y0, right.y0))
+    intersection = width * height
+    left_area = max(1.0, (left.x1 - left.x0) * (left.y1 - left.y0))
+    right_area = max(1.0, (right.x1 - right.x0) * (right.y1 - right.y0))
+    return intersection / min(left_area, right_area)
+
+
+def _merge_native_and_ocr(native: list[Block], ocr: list[Block]) -> list[Block]:
+    merged = list(native)
+    for candidate in ocr:
+        normalized = "".join((candidate.text or "").split())
+        duplicate = any(
+            normalized == "".join((existing.text or "").split()) and _overlap_ratio(candidate.bbox, existing.bbox) >= 0.5
+            for existing in native
+        )
+        if not duplicate:
+            merged.append(candidate)
+    merged.sort(key=lambda block: (block.bbox.y0, block.bbox.x0))
+    return [block.model_copy(update={"reading_order": index}) for index, block in enumerate(merged)]
+
+
+def load_pdf(
+    path: Path,
+    ocr_policy: OcrPolicy | None = None,
+    ocr_engine: OcrEngine | None = None,
+) -> SourceDocument:
     """Load PDF identity, page geometry, and native text blocks."""
     source_path = path.expanduser().resolve()
     if not source_path.is_file():
@@ -212,13 +266,60 @@ def load_pdf(path: Path) -> SourceDocument:
         except Exception as exc:
             raise ValueError("encrypted PDF cannot be opened without a password") from exc
 
+    policy = ocr_policy or OcrPolicy()
+    engine = ocr_engine or TesseractOcrEngine()
+    if engine.is_cloud and not policy.allow_cloud:
+        raise ValueError("cloud OCR is disabled for this document; explicitly allow cloud processing")
+
     pages = []
     with pymupdf.open(source_path) as native_pdf:
         for index, native_page in enumerate(native_pdf, start=1):
             blocks = _extract_blocks(native_page, document_id, index)
             source_ref = SourceRef(document_id=document_id, page_number=index)
             diagnostics = []
-            if not blocks:
+            native_text = "".join(block.text or "" for block in blocks)
+            if policy.needs_ocr(native_text):
+                try:
+                    result = engine.recognize(native_page, policy.language)
+                    ocr_blocks = _ocr_blocks(result, document_id, index)
+                    blocks = _merge_native_and_ocr(blocks, ocr_blocks)
+                    diagnostics.append(
+                        Diagnostic(
+                            code="ocr_applied",
+                            severity=DiagnosticSeverity.INFO,
+                            message=f"OCR applied with {result.engine}; extracted {len(ocr_blocks)} text lines.",
+                            source_ref=source_ref,
+                        )
+                    )
+                    low_confidence = [block for block in ocr_blocks if block.confidence is not None and block.confidence < 0.6]
+                    if low_confidence:
+                        diagnostics.append(
+                            Diagnostic(
+                                code="low_ocr_confidence",
+                                severity=DiagnosticSeverity.WARNING,
+                                message=f"{len(low_confidence)} OCR text lines are below the 0.6 confidence threshold.",
+                                source_ref=source_ref,
+                            )
+                        )
+                    elif ocr_blocks and all(block.confidence is None for block in ocr_blocks):
+                        diagnostics.append(
+                            Diagnostic(
+                                code="ocr_confidence_unavailable",
+                                severity=DiagnosticSeverity.INFO,
+                                message=f"{result.engine} did not expose line confidence values.",
+                                source_ref=source_ref,
+                            )
+                        )
+                except RuntimeError as exc:
+                    diagnostics.append(
+                        Diagnostic(
+                            code="ocr_unavailable",
+                            severity=DiagnosticSeverity.ERROR,
+                            message=f"OCR runtime unavailable: {exc}",
+                            source_ref=source_ref,
+                        )
+                    )
+            if not blocks and policy.mode == OcrMode.NEVER:
                 diagnostics.append(
                     Diagnostic(
                         code="no_native_text",

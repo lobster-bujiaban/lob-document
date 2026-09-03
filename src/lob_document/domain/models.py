@@ -86,6 +86,8 @@ class Block(StrictModel):
     bbox: BoundingBox
     reading_order: int = Field(ge=0)
     source_method: SourceMethod
+    source_engine: str | None = None
+    source_engine_version: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     source_ref: SourceRef
     spans: list[TextSpan] = Field(default_factory=list)
@@ -120,7 +122,7 @@ class DocumentTree(StrictModel):
 
 
 class SourceDocument(StrictModel):
-    schema_version: str = "1.2"
+    schema_version: str = "1.3"
     source: FileIdentity
     page_count: int = Field(ge=0)
     pages: list[Page] = Field(default_factory=list)
