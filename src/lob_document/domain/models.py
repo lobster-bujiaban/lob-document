@@ -79,6 +79,22 @@ class TextSpan(StrictModel):
     flags: int = Field(default=0, ge=0)
 
 
+class TableCell(StrictModel):
+    row: int = Field(ge=0)
+    column: int = Field(ge=0)
+    row_span: int = Field(default=1, ge=1)
+    column_span: int = Field(default=1, ge=1)
+    text: str = ""
+    bbox: BoundingBox
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class TableData(StrictModel):
+    row_count: int = Field(ge=1)
+    column_count: int = Field(ge=1)
+    cells: list[TableCell] = Field(default_factory=list)
+
+
 class Block(StrictModel):
     id: str
     type: BlockType
@@ -91,6 +107,7 @@ class Block(StrictModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     source_ref: SourceRef
     spans: list[TextSpan] = Field(default_factory=list)
+    table: TableData | None = None
     diagnostics: list[Diagnostic] = Field(default_factory=list)
 
 
@@ -112,6 +129,7 @@ class DocumentNode(StrictModel):
     heading_level: int | None = Field(default=None, ge=1, le=6)
     source_block_ids: list[str] = Field(default_factory=list)
     source_refs: list[SourceRef] = Field(default_factory=list)
+    table: TableData | None = None
     children: list[DocumentNode] = Field(default_factory=list)
 
 
@@ -122,7 +140,7 @@ class DocumentTree(StrictModel):
 
 
 class SourceDocument(StrictModel):
-    schema_version: str = "1.3"
+    schema_version: str = "1.4"
     source: FileIdentity
     page_count: int = Field(ge=0)
     pages: list[Page] = Field(default_factory=list)

@@ -15,10 +15,30 @@ class OcrLine:
 
 
 @dataclass(frozen=True)
+class OcrTableCell:
+    row: int
+    column: int
+    row_span: int
+    column_span: int
+    text: str
+    bbox: tuple[float, float, float, float]
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class OcrTable:
+    bbox: tuple[float, float, float, float]
+    row_count: int
+    column_count: int
+    cells: list[OcrTableCell] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class OcrPageResult:
     engine: str
     engine_version: str | None
     lines: list[OcrLine] = field(default_factory=list)
+    tables: list[OcrTable] = field(default_factory=list)
 
 
 class OcrEngine(Protocol):

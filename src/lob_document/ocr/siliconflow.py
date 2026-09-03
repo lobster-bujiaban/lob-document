@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 import pymupdf
 
-from .base import CloudOcrEngine, OcrLine, OcrPageResult
+from .base import CloudOcrEngine, OcrLine, OcrPageResult, OcrTable, OcrTableCell
 
 
 class SiliconFlowOcrEngine(CloudOcrEngine):
@@ -55,10 +55,15 @@ class SiliconFlowOcrEngine(CloudOcrEngine):
                         {
                             "type": "text",
                             "text": (
-                                "Perform OCR on this document page. Return JSON only with shape "
-                                '{"lines":[{"text":"...","bbox":[x0,y0,x1,y1],"confidence":0.0}]}. '
+                                "Perform OCR and recover tables on this document page. Return JSON only with shape "
+                                '{"lines":[{"text":"...","bbox":[x0,y0,x1,y1],"confidence":0.0}],'
+                                '"tables":[{"bbox":[x0,y0,x1,y1],"rows":[["cell 0,0","cell 0,1"],'
+                                '["cell 1,0","cell 1,1"]],"merged_cells":[{"row":0,"column":0,'
+                                '"row_span":1,"column_span":2}]}]}. '
                                 "Coordinates must use a 0..1000 top-left coordinate system. Preserve reading order, "
-                                f"all visible text, punctuation, and the document language ({language})."
+                                "every row must have the same number of columns, use empty strings for empty or covered cells, "
+                                "and include text inside tables in both lines and rows. "
+                                f"Preserve all visible text, punctuation, and the document language ({language})."
                             ),
                         },
                     ],
@@ -85,11 +90,20 @@ class SiliconFlowOcrEngine(CloudOcrEngine):
 
         try:
             content = body["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
+            normalized = content.strip()
+            if normalized.startswith("```"):
+                normalized = normalized.split("\n", 1)[1].rsplit("```", 1)[0]
+            parsed = json.loads(normalized)
             lines = [self._line(item, page.rect.width, page.rect.height) for item in parsed["lines"]]
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise RuntimeError("SiliconFlow returned an invalid OCR JSON response") from exc
-        return OcrPageResult(engine=self.name, engine_version=self.model, lines=lines)
+        tables = []
+        for item in parsed.get("tables", []):
+            try:
+                tables.append(self._table(item, page.rect.width, page.rect.height))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return OcrPageResult(engine=self.name, engine_version=self.model, lines=lines, tables=tables)
 
     @staticmethod
     def _line(item: object, width: float, height: float) -> OcrLine:
@@ -107,4 +121,72 @@ class SiliconFlowOcrEngine(CloudOcrEngine):
             text=item["text"],
             bbox=(values[0] * width / 1000, values[1] * height / 1000, values[2] * width / 1000, values[3] * height / 1000),
             confidence=normalized_confidence,
+        )
+
+    @staticmethod
+    def _coordinates(value: object, width: float, height: float) -> tuple[float, float, float, float]:
+        if not isinstance(value, list) or len(value) != 4:
+            raise ValueError("invalid OCR bounding box")
+        values = [min(1000.0, max(0.0, float(item))) for item in value]
+        if values[2] < values[0] or values[3] < values[1]:
+            raise ValueError("invalid OCR bounding box extents")
+        return values[0] * width / 1000, values[1] * height / 1000, values[2] * width / 1000, values[3] * height / 1000
+
+    @classmethod
+    def _table(cls, item: object, width: float, height: float) -> OcrTable:
+        if not isinstance(item, dict):
+            raise ValueError("invalid OCR table")
+        raw_cells = item.get("cells", [])
+        table_bbox = cls._coordinates(item["bbox"], width, height)
+        cells = []
+        rows = item.get("rows")
+        if isinstance(rows, list) and rows:
+            column_count = max((len(row) for row in rows if isinstance(row, list)), default=0)
+            merges = {
+                (int(merge.get("row", 0)), int(merge.get("column", 0))): merge
+                for merge in item.get("merged_cells", [])
+                if isinstance(merge, dict)
+            }
+            for row_index, row in enumerate(rows):
+                if not isinstance(row, list):
+                    continue
+                for column_index in range(column_count):
+                    merge = merges.get((row_index, column_index), {})
+                    cells.append(
+                        OcrTableCell(
+                            row=row_index,
+                            column=column_index,
+                            row_span=max(1, int(merge.get("row_span", 1))),
+                            column_span=max(1, int(merge.get("column_span", 1))),
+                            text=str(row[column_index] if column_index < len(row) else ""),
+                            bbox=table_bbox,
+                        )
+                    )
+        elif isinstance(raw_cells, list):
+            for cell in raw_cells:
+                if not isinstance(cell, dict) or "row" not in cell or "column" not in cell:
+                    continue
+                confidence = cell.get("confidence")
+                cells.append(
+                    OcrTableCell(
+                        row=int(cell["row"]),
+                        column=int(cell["column"]),
+                        row_span=max(1, int(cell.get("row_span", 1))),
+                        column_span=max(1, int(cell.get("column_span", cell.get("col_span", 1)))),
+                        text=str(cell.get("text", "")),
+                        bbox=cls._coordinates(cell["bbox"], width, height) if cell.get("bbox") else table_bbox,
+                        confidence=None if confidence is None else min(1.0, max(0.0, float(confidence))),
+                    )
+                )
+        if not cells:
+            raise ValueError("OCR table has no valid cells")
+        row_count = max(cell.row + cell.row_span for cell in cells)
+        column_count = max(cell.column + cell.column_span for cell in cells)
+        if row_count < 1 or column_count < 1:
+            raise ValueError("invalid OCR table dimensions")
+        return OcrTable(
+            bbox=table_bbox,
+            row_count=row_count,
+            column_count=column_count,
+            cells=cells,
         )

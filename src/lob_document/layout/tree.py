@@ -58,6 +58,7 @@ def build_document_tree(document: SourceDocument) -> SourceDocument:
             heading_level=level,
             source_block_ids=[block.id],
             source_refs=[block.source_ref],
+            table=block.table,
         )
         if level == 1:
             roots.append(node)

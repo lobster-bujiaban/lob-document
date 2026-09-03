@@ -14,6 +14,8 @@ from .models import (
     SourceDocument,
     SourceMethod,
     SourceRef,
+    TableCell,
+    TableData,
     TextSpan,
 )
 
@@ -31,5 +33,7 @@ __all__ = [
     "SourceDocument",
     "SourceMethod",
     "SourceRef",
+    "TableCell",
+    "TableData",
     "TextSpan",
 ]

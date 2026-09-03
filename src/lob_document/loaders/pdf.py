@@ -17,6 +17,8 @@ from lob_document.domain import (
     SourceDocument,
     SourceMethod,
     SourceRef,
+    TableCell,
+    TableData,
     TextSpan,
 )
 from lob_document.ocr import OcrEngine, OcrMode, OcrPageResult, OcrPolicy, TesseractOcrEngine
@@ -222,6 +224,113 @@ def _ocr_blocks(result: OcrPageResult, document_id: str, page_number: int) -> li
     return extracted
 
 
+def _table_text(table: TableData) -> str:
+    rows = [["" for _ in range(table.column_count)] for _ in range(table.row_count)]
+    for cell in table.cells:
+        if cell.row < table.row_count and cell.column < table.column_count:
+            rows[cell.row][cell.column] = cell.text
+    return "\n".join("\t".join(row) for row in rows)
+
+
+def _table_block(
+    document_id: str,
+    page_number: int,
+    bbox: BoundingBox,
+    table: TableData,
+    source_method: SourceMethod,
+    source_engine: str,
+    source_engine_version: str | None,
+) -> Block:
+    text = _table_text(table)
+    fingerprint = f"{page_number}:{bbox.model_dump_json()}:table:{text}".encode()
+    source_ref = SourceRef(document_id=document_id, page_number=page_number, bbox=bbox)
+    confidences = [cell.confidence for cell in table.cells if cell.confidence is not None]
+    return Block(
+        id=f"{document_id}_block_{hashlib.sha256(fingerprint).hexdigest()[:16]}",
+        type=BlockType.TABLE,
+        text=text,
+        bbox=bbox,
+        reading_order=0,
+        source_method=source_method,
+        source_engine=source_engine,
+        source_engine_version=source_engine_version,
+        confidence=min(confidences) if confidences else None,
+        source_ref=source_ref,
+        table=table,
+    )
+
+
+def _native_table_blocks(page: pymupdf.Page, document_id: str, page_number: int) -> list[Block]:
+    extracted = []
+    for native_table in page.find_tables().tables:
+        matrix = native_table.extract()
+        if len(matrix) < 2 or max((len(row) for row in matrix), default=0) < 2:
+            continue
+        cells = []
+        for row_index, row in enumerate(native_table.rows):
+            for column_index, cell_bbox in enumerate(row.cells):
+                if cell_bbox is None:
+                    continue
+                text = ""
+                if row_index < len(matrix) and column_index < len(matrix[row_index]):
+                    text = str(matrix[row_index][column_index] or "").strip()
+                cells.append(
+                    TableCell(
+                        row=row_index,
+                        column=column_index,
+                        text=text,
+                        bbox=_bbox(cell_bbox),
+                        confidence=1.0,
+                    )
+                )
+        table = TableData(row_count=len(native_table.rows), column_count=max(len(row.cells) for row in native_table.rows), cells=cells)
+        extracted.append(
+            _table_block(
+                document_id,
+                page_number,
+                _bbox(native_table.bbox),
+                table,
+                SourceMethod.NATIVE,
+                "pymupdf",
+                pymupdf.__version__,
+            )
+        )
+    return extracted
+
+
+def _ocr_table_blocks(result: OcrPageResult, document_id: str, page_number: int) -> list[Block]:
+    extracted = []
+    for item in result.tables:
+        table = TableData(
+            row_count=item.row_count,
+            column_count=item.column_count,
+            cells=[
+                TableCell(
+                    row=cell.row,
+                    column=cell.column,
+                    row_span=cell.row_span,
+                    column_span=cell.column_span,
+                    text=cell.text.strip(),
+                    bbox=_bbox(cell.bbox),
+                    confidence=cell.confidence,
+                )
+                for cell in item.cells
+            ],
+        )
+        extracted.append(
+            _table_block(
+                document_id,
+                page_number,
+                _bbox(item.bbox),
+                table,
+                SourceMethod.OCR,
+                result.engine,
+                result.engine_version,
+            )
+        )
+    return extracted
+
+
 def _overlap_ratio(left: BoundingBox, right: BoundingBox) -> float:
     width = max(0.0, min(left.x1, right.x1) - max(left.x0, right.x0))
     height = max(0.0, min(left.y1, right.y1) - max(left.y0, right.y0))
@@ -275,6 +384,15 @@ def load_pdf(
     with pymupdf.open(source_path) as native_pdf:
         for index, native_page in enumerate(native_pdf, start=1):
             blocks = _extract_blocks(native_page, document_id, index)
+            native_tables = _native_table_blocks(native_page, document_id, index)
+            if native_tables:
+                blocks = [
+                    block
+                    for block in blocks
+                    if not any(_overlap_ratio(block.bbox, table.bbox) >= 0.8 for table in native_tables)
+                ] + native_tables
+                blocks.sort(key=lambda block: (block.bbox.y0, block.bbox.x0))
+                blocks = [block.model_copy(update={"reading_order": order}) for order, block in enumerate(blocks)]
             source_ref = SourceRef(document_id=document_id, page_number=index)
             diagnostics = []
             native_text = "".join(block.text or "" for block in blocks)
@@ -282,6 +400,13 @@ def load_pdf(
                 try:
                     result = engine.recognize(native_page, policy.language)
                     ocr_blocks = _ocr_blocks(result, document_id, index)
+                    ocr_tables = _ocr_table_blocks(result, document_id, index)
+                    if ocr_tables:
+                        ocr_blocks = [
+                            block
+                            for block in ocr_blocks
+                            if not any(_overlap_ratio(block.bbox, table.bbox) >= 0.8 for table in ocr_tables)
+                        ] + ocr_tables
                     blocks = _merge_native_and_ocr(blocks, ocr_blocks)
                     diagnostics.append(
                         Diagnostic(
