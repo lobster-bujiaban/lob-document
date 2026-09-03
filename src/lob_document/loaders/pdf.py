@@ -13,6 +13,8 @@ from lob_document.domain import (
     Diagnostic,
     DiagnosticSeverity,
     FileIdentity,
+    FigureData,
+    ImageAsset,
     Page,
     SourceDocument,
     SourceMethod,
@@ -354,10 +356,55 @@ def _merge_native_and_ocr(native: list[Block], ocr: list[Block]) -> list[Block]:
     return [block.model_copy(update={"reading_order": index}) for index, block in enumerate(merged)]
 
 
+def _extract_figures(pdf: pymupdf.Page, document_id: str, page_number: int, assets_dir: Path | None) -> list[Block]:
+    if assets_dir is None:
+        return []
+    figures = []
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    page_area = max(1.0, pdf.rect.width * pdf.rect.height)
+    seen: set[str] = set()
+    for image in pdf.get_images(full=True):
+        xref = image[0]
+        try:
+            extracted = pdf.parent.extract_image(xref)
+            rects = pdf.get_image_rects(xref)
+        except (KeyError, ValueError, RuntimeError):
+            continue
+        for rect in rects:
+            if rect.get_area() / page_area >= 0.85:
+                continue
+            data = extracted["image"]
+            digest = hashlib.sha256(data).hexdigest()
+            if digest in seen:
+                continue
+            seen.add(digest)
+            extension = extracted.get("ext", "png")
+            filename = f"asset_{digest[:24]}.{extension}"
+            (assets_dir / filename).write_bytes(data)
+            bbox = _bbox((rect.x0, rect.y0, rect.x1, rect.y1))
+            source_ref = SourceRef(document_id=document_id, page_number=page_number, bbox=bbox)
+            asset = ImageAsset(
+                id=f"asset_{digest[:24]}",
+                path=str(Path("assets") / filename),
+                sha256=digest,
+                media_type=f"image/{extension}",
+                width=int(extracted["width"]),
+                height=int(extracted["height"]),
+            )
+            figures.append(Block(
+                id=f"{document_id}_figure_{digest[:16]}", type=BlockType.FIGURE,
+                text=None, bbox=bbox, reading_order=0, source_method=SourceMethod.NATIVE,
+                source_engine="pymupdf", source_engine_version=pymupdf.__version__,
+                source_ref=source_ref, figure=FigureData(asset=asset),
+            ))
+    return figures
+
+
 def load_pdf(
     path: Path,
     ocr_policy: OcrPolicy | None = None,
     ocr_engine: OcrEngine | None = None,
+    artifacts_dir: Path | None = None,
 ) -> SourceDocument:
     """Load PDF identity, page geometry, and native text blocks."""
     source_path = path.expanduser().resolve()
@@ -384,6 +431,24 @@ def load_pdf(
     with pymupdf.open(source_path) as native_pdf:
         for index, native_page in enumerate(native_pdf, start=1):
             blocks = _extract_blocks(native_page, document_id, index)
+            figure_blocks = _extract_figures(native_page, document_id, index, artifacts_dir)
+            for figure in figure_blocks:
+                captions = [
+                    block for block in blocks
+                    if block.type == BlockType.PARAGRAPH
+                    and block.text
+                    and 0 <= block.bbox.y0 - figure.bbox.y1 <= 36
+                    and len(block.text.strip()) <= 120
+                ]
+                if captions:
+                    caption = min(captions, key=lambda block: block.bbox.y0)
+                    figure = figure.model_copy(update={
+                        "figure": figure.figure.model_copy(update={"caption": caption.text.strip()})
+                    })
+                    figure_blocks[figure_blocks.index(next(item for item in figure_blocks if item.id == figure.id))] = figure
+            blocks += figure_blocks
+            blocks.sort(key=lambda block: (block.bbox.y0, block.bbox.x0))
+            blocks = [block.model_copy(update={"reading_order": order}) for order, block in enumerate(blocks)]
             native_tables = _native_table_blocks(native_page, document_id, index)
             if native_tables:
                 blocks = [

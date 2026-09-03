@@ -59,6 +59,7 @@ def build_document_tree(document: SourceDocument) -> SourceDocument:
             source_block_ids=[block.id],
             source_refs=[block.source_ref],
             table=block.table,
+            figure=block.figure,
         )
         if level == 1:
             roots.append(node)

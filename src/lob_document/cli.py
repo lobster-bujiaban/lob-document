@@ -73,7 +73,8 @@ def main() -> None:
         if args.ocr_engine == "siliconflow" and not args.allow_cloud_ocr:
             raise ValueError("SiliconFlow OCR requires --allow-cloud-ocr because page images leave this machine")
         engine = SiliconFlowOcrEngine.from_env() if args.ocr_engine == "siliconflow" else TesseractOcrEngine()
-        document = build_document_tree(load_pdf(args.source, ocr_policy=policy, ocr_engine=engine))
+        artifacts_dir = (args.output.parent if args.output else Path("artifacts"))
+        document = build_document_tree(load_pdf(args.source, ocr_policy=policy, ocr_engine=engine, artifacts_dir=artifacts_dir / "assets"))
         _write_json(document.model_dump(mode="json"), args.output)
         if args.markdown is not None:
             _write_text(export_markdown(document), args.markdown)

@@ -48,6 +48,8 @@ def _render_node(node: DocumentNode, output: list[str]) -> None:
     output.append(_source_comment(node))
     if node.type == BlockType.TABLE:
         output.append(_render_table(node))
+    elif node.type == BlockType.FIGURE and node.figure is not None:
+        output.append(f"![{node.figure.caption or node.figure.asset.id}]({node.figure.asset.path})")
     elif node.type == BlockType.HEADING:
         level = min(6, (node.heading_level or 2) + 1)
         output.append(f"{'#' * level} {node.text}")

@@ -95,6 +95,20 @@ class TableData(StrictModel):
     cells: list[TableCell] = Field(default_factory=list)
 
 
+class ImageAsset(StrictModel):
+    id: str
+    path: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    media_type: str
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+
+
+class FigureData(StrictModel):
+    asset: ImageAsset
+    caption: str | None = None
+
+
 class Block(StrictModel):
     id: str
     type: BlockType
@@ -108,6 +122,7 @@ class Block(StrictModel):
     source_ref: SourceRef
     spans: list[TextSpan] = Field(default_factory=list)
     table: TableData | None = None
+    figure: FigureData | None = None
     diagnostics: list[Diagnostic] = Field(default_factory=list)
 
 
@@ -130,6 +145,7 @@ class DocumentNode(StrictModel):
     source_block_ids: list[str] = Field(default_factory=list)
     source_refs: list[SourceRef] = Field(default_factory=list)
     table: TableData | None = None
+    figure: FigureData | None = None
     children: list[DocumentNode] = Field(default_factory=list)
 
 
@@ -140,7 +156,7 @@ class DocumentTree(StrictModel):
 
 
 class SourceDocument(StrictModel):
-    schema_version: str = "1.4"
+    schema_version: str = "1.5"
     source: FileIdentity
     page_count: int = Field(ge=0)
     pages: list[Page] = Field(default_factory=list)

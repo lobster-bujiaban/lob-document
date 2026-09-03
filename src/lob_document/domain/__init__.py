@@ -9,6 +9,7 @@ from .models import (
     DiagnosticSeverity,
     DocumentNode,
     DocumentTree,
+    FigureData,
     FileIdentity,
     Page,
     SourceDocument,
@@ -16,6 +17,7 @@ from .models import (
     SourceRef,
     TableCell,
     TableData,
+    ImageAsset,
     TextSpan,
 )
 
@@ -28,6 +30,8 @@ __all__ = [
     "DiagnosticSeverity",
     "DocumentNode",
     "DocumentTree",
+    "FigureData",
+    "ImageAsset",
     "FileIdentity",
     "Page",
     "SourceDocument",
