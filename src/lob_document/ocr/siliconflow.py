@@ -17,9 +17,9 @@ class SiliconFlowOcrEngine(CloudOcrEngine):
     def __init__(
         self,
         api_key: str,
-        model: str = "PaddlePaddle/PaddleOCR-VL-1.5",
+        model: str = "Qwen/Qwen3-VL-8B-Instruct",
         base_url: str = "https://api.siliconflow.cn/v1",
-        timeout_seconds: float = 120,
+        timeout_seconds: float = 300,
         dpi: int = 200,
     ) -> None:
         if not api_key.strip():
@@ -34,8 +34,9 @@ class SiliconFlowOcrEngine(CloudOcrEngine):
     def from_env(cls) -> SiliconFlowOcrEngine:
         return cls(
             api_key=os.getenv("SILICONFLOW_API_KEY", ""),
-            model=os.getenv("SILICONFLOW_OCR_MODEL", "PaddlePaddle/PaddleOCR-VL-1.5"),
+            model=os.getenv("SILICONFLOW_OCR_MODEL", "Qwen/Qwen3-VL-8B-Instruct"),
             base_url=os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1"),
+            timeout_seconds=float(os.getenv("SILICONFLOW_TIMEOUT_SECONDS", "300")),
         )
 
     def recognize(self, page: pymupdf.Page, language: str) -> OcrPageResult:

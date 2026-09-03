@@ -82,7 +82,9 @@ uv run lob-document parse samples/scanned.pdf \
 ```
 
 只有触发 OCR 的页面会以 JPEG 图片上传；原始 PDF 不会整体上传。模型可通过
-`SILICONFLOW_OCR_MODEL` 调整，默认使用 `PaddlePaddle/PaddleOCR-VL-1.5`。
+`SILICONFLOW_OCR_MODEL` 调整，默认使用实测可稳定返回坐标 JSON 的 `Qwen/Qwen3-VL-8B-Instruct`。
+云端推理默认等待 300 秒，可通过 `SILICONFLOW_TIMEOUT_SECONDS` 调整；超时或服务错误会记录为
+`cloud_ocr_failed`，不会与本地 OCR 运行时缺失混淆。
 
 ## 项目边界
 

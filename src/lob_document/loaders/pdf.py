@@ -311,11 +311,12 @@ def load_pdf(
                             )
                         )
                 except RuntimeError as exc:
+                    is_cloud = engine.is_cloud
                     diagnostics.append(
                         Diagnostic(
-                            code="ocr_unavailable",
+                            code="cloud_ocr_failed" if is_cloud else "ocr_unavailable",
                             severity=DiagnosticSeverity.ERROR,
-                            message=f"OCR runtime unavailable: {exc}",
+                            message=f"{'Cloud OCR failed' if is_cloud else 'OCR runtime unavailable'}: {exc}",
                             source_ref=source_ref,
                         )
                     )
