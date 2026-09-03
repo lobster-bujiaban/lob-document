@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from lob_document.domain import SourceDocument
 from lob_document.exporters import export_markdown
 from lob_document.layout import build_document_tree
-from lob_document.loaders import load_pdf
+from lob_document.loaders import load_docx, load_image, load_markdown, load_pdf
 from lob_document.ocr import OcrMode, OcrPolicy, SiliconFlowOcrEngine, TesseractOcrEngine
 
 
@@ -74,7 +74,16 @@ def main() -> None:
             raise ValueError("SiliconFlow OCR requires --allow-cloud-ocr because page images leave this machine")
         engine = SiliconFlowOcrEngine.from_env() if args.ocr_engine == "siliconflow" else TesseractOcrEngine()
         artifacts_dir = (args.output.parent if args.output else Path("artifacts"))
-        document = build_document_tree(load_pdf(args.source, ocr_policy=policy, ocr_engine=engine, artifacts_dir=artifacts_dir / "assets"))
+        if args.source.suffix.lower() in {".md", ".markdown"}:
+            document = build_document_tree(load_markdown(args.source))
+        elif args.source.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+            document = build_document_tree(load_image(args.source, ocr_policy=policy, ocr_engine=engine, artifacts_dir=artifacts_dir / "assets"))
+        elif args.source.suffix.lower() == ".docx":
+            document = build_document_tree(load_docx(args.source, artifacts_dir=artifacts_dir))
+        elif args.source.suffix.lower() == ".pdf":
+            document = build_document_tree(load_pdf(args.source, ocr_policy=policy, ocr_engine=engine, artifacts_dir=artifacts_dir / "assets"))
+        else:
+            raise ValueError("supported input formats are PDF, Markdown, PNG, JPG, JPEG and WEBP")
         _write_json(document.model_dump(mode="json"), args.output)
         if args.markdown is not None:
             _write_text(export_markdown(document), args.markdown)

@@ -62,6 +62,8 @@ class SourceRef(StrictModel):
     document_id: str
     page_number: int = Field(ge=1)
     bbox: BoundingBox | None = None
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
 
 
 class Diagnostic(StrictModel):
@@ -115,6 +117,7 @@ class Block(StrictModel):
     text: str | None = None
     bbox: BoundingBox
     reading_order: int = Field(ge=0)
+    heading_level: int | None = Field(default=None, ge=1, le=6)
     source_method: SourceMethod
     source_engine: str | None = None
     source_engine_version: str | None = None
@@ -156,7 +159,7 @@ class DocumentTree(StrictModel):
 
 
 class SourceDocument(StrictModel):
-    schema_version: str = "1.5"
+    schema_version: str = "1.7"
     source: FileIdentity
     page_count: int = Field(ge=0)
     pages: list[Page] = Field(default_factory=list)

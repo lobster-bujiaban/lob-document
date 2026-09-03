@@ -89,6 +89,15 @@ uv run lob-document parse samples/scanned.pdf \
 嵌入图片会写入输出目录的 `assets/`，按内容哈希命名并在 `figure` 节点中记录；覆盖页面大部分
 区域的扫描背景图会过滤，避免与 OCR 结果重复。
 
+阶段 5 目前支持 Markdown Loader。Markdown 的标题、列表和段落会进入同一文档树，来源引用保留
+原文件行号；CLI 会根据 `.pdf`、`.md` 或 `.markdown` 后缀自动选择 Loader。
+
+图片 Loader 支持 PNG、JPG、JPEG 和 WEBP。图片作为单页 `figure` 保存，默认对整图执行 OCR；
+输出目录会保存按哈希命名的图片副本，并将识别文本绑定到图片页面坐标。
+
+Word Loader 支持 `.docx`，解析标题、段落、列表、表格和内嵌图片，统一输出为同一套文档树、
+来源引用和 Markdown。Word 文档的来源引用使用文档顺序索引和行号语义。
+
 解析器会将原生 PDF 表格线和云端视觉模型识别出的表格归一为 `TableData` / `TableCell`，保存
 行列索引、合并跨度、文本、坐标和置信度。表内散落文本会去重；普通表格输出 Markdown，包含
 合并单元格时输出 HTML 表格以保留结构。

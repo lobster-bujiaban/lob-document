@@ -50,7 +50,7 @@ def build_document_tree(document: SourceDocument) -> SourceDocument:
             continue
         level = None
         if block.type == BlockType.HEADING:
-            level = 1 if _max_font_size(block) == largest_heading else 2
+            level = block.heading_level or (1 if _max_font_size(block) == largest_heading else 2)
         node = DocumentNode(
             id=_node_id(document.source.id, [block.id]),
             type=block.type,
