@@ -2,9 +2,9 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 
-LOB Document 从 MinerU、Docling 和 MarkItDown 的源码调用链出发，研究企业文档进入 RAG 前的解析过程，并实现一条可解释、可评测、可追溯的文档结构化链路。
+LOB Document 当前目标是一个**可演示的文档解析 MVP**：通过本地 Web 工作台或统一 CLI 读取 PDF、Word、Markdown 和图片，输出结构化 JSON、可阅读的 Markdown 和图片资产。
 
-项目重点不是封装已有解析工具，而是掌握文件载入、页面布局、阅读顺序、OCR、表格、公式、图片、结构化输出和 RAG Chunk 之间的状态转换与质量边界。
+本期聚焦文件输入、文本提取、OCR、基础结构恢复与结果展示。RAG 集成、完整质量评测、生产化和源码对照研究不作为本期交付前置条件。
 
 ## 核心链路
 
@@ -16,32 +16,34 @@ File
   → Block Normalize
   → Reading Order
   → Document Tree
-  → Markdown / JSON / RAG Chunks
-  → Quality Report
+  → Markdown / JSON / Image Assets
+  → Source References / Diagnostics
 ```
 
-## 首个里程碑
+## 演示目标
 
-输入一份包含标题、正文、表格、图片和页眉页脚的固定 PDF，输出：
+使用选定的原生 PDF、扫描 PDF、Word、Markdown 和图片样例，通过同一 CLI 展示：
 
 - 结构化文档树；
-- 保持正确阅读顺序的 Markdown；
-- 携带页码、坐标和层级路径的 RAG Chunk；
-- 可定位丢失、乱序和低置信内容的质量报告。
+- 基础阅读顺序清晰的 Markdown；
+- 基础表格、图片资产和已有的图注关联结果；
+- PDF/图片的页码、坐标，以及 Word/Markdown 的顺序或行号来源信息；
+- 已有的 OCR 与低置信内容等结构化诊断（不等同于完整质量报告）。
 
-## 阶段路线
+## 当前范围与状态
 
-- [ ] 阶段 0：研究基线、样例集与统一领域模型
-- [ ] 阶段 1：原生 PDF 文本、坐标与页面结构
-- [ ] 阶段 2：版面分析、阅读顺序与文档树
-- [ ] 阶段 3：扫描件 OCR 与原生文本融合
-- [ ] 阶段 4：表格、图片和数学公式
-- [ ] 阶段 5：多格式 Loader 与统一输出
-- [ ] 阶段 6：RAG Chunk、引用溯源与 `lob-vector` 集成
-- [ ] 阶段 7：质量评测、批处理与生产化
-- [ ] 阶段 8：MinerU、Docling、MarkItDown 源码映射与差异清单
+- [x] 统一领域模型、稳定身份与 CLI
+- [x] 原生 PDF 文本、坐标和基础版面提取
+- [x] 基础文档树与 Markdown/JSON 导出
+- [x] 本地与云端 OCR 适配、原生文本融合
+- [x] 基础表格恢复、图片提取与图注关联
+- [x] PDF、Word、Markdown 和图片 Loader
+- [x] 本地 Web 工作台：上传、OCR 设置、任务状态、原文对照、结果预览和下载
+- [ ] 固定演示样例、确认运行环境并逐项核对输出
 
-完整任务、步骤和验收标准见 [实施计划](./docs/IMPLEMENTATION_PLAN.md)。
+勾选表示已有实现，不表示对任意文档均能准确解析，也不代表演示验收已经通过。演示收尾与验收标准见 [实施计划](./docs/IMPLEMENTATION_PLAN.md)。
+
+公式识别、复杂跨页表格、RAG Chunk、`lob-vector` 集成、评测平台、生产化 API 和完整源码映射均为后续可选扩展，不阻塞本期交付。
 
 ## 技术基线
 
@@ -52,6 +54,32 @@ File
 - 原始文件只读，所有派生产物写入独立 artifacts 目录。
 
 ## 快速开始
+
+使用根目录启动脚本启动网页：
+
+```bash
+./start.sh
+./start.sh --port 8095
+./start.sh --help
+./start.sh parse <文件路径> --output artifacts/result.json --markdown artifacts/result.md
+```
+
+默认访问 [本地工作台](http://127.0.0.1:8093)。脚本需要 `uv`、Node.js 20.19+ 和 npm，会按锁文件准备依赖并构建前端；首次运行可能需要联网。相对输入和输出路径以项目根目录为准。
+
+### Web 工作台
+
+- 参考同级 `lob-flow` 的米白、橙色与深蓝视觉风格，采用 React + TypeScript + Vite；FastAPI 同源托管页面与接口。
+- 上传最大 20 MB 的文档，选择自动 OCR、强制 OCR 或仅原生文本；云端 OCR 必须单独勾选上传授权，密钥不传给前端。
+- 左侧保留解析记录；原文件与结果并排显示，可切换阅读预览、Markdown 源文、JSON 和诊断。
+- PDF、图片可以原文预览，Markdown 展示原文，Word 提供原文件下载与解析结果展示。
+- 支持下载 Markdown、JSON 和包含图片资产的 ZIP 结果包。页面不自动加载文档中的外部图片；HTML 表格经过安全过滤后展示。
+- 任务和文件保存在 `artifacts/web/`，服务重启后仍可查看已完成记录；中断的任务标记失败，可重新上传。没有自动清理，需要手动管理本地产物。
+- 演示版最多同时解析 2 个任务、最多接受 4 个未完成任务，单任务超时 10 分钟；不展示虚假的百分比进度。
+- 仅绑定本机，不提供登录或生产级隔离，不应暴露到公网。OCR 依赖与模型识别质量仍需在演示环境确认。
+
+前端开发可在后端运行时执行 `npm --prefix web run dev`，默认代理至 `127.0.0.1:8093`。日常演示使用 `./start.sh` 即可。
+
+也可以直接运行 CLI：
 
 ```bash
 uv run lob-document --help
@@ -89,7 +117,7 @@ uv run lob-document parse samples/scanned.pdf \
 嵌入图片会写入输出目录的 `assets/`，按内容哈希命名并在 `figure` 节点中记录；覆盖页面大部分
 区域的扫描背景图会过滤，避免与 OCR 结果重复。
 
-阶段 5 目前支持 Markdown Loader。Markdown 的标题、列表和段落会进入同一文档树，来源引用保留
+Markdown Loader 的标题、列表和段落会进入同一文档树，来源引用保留
 原文件行号；CLI 会根据 `.pdf`、`.md` 或 `.markdown` 后缀自动选择 Loader。
 
 图片 Loader 支持 PNG、JPG、JPEG 和 WEBP。图片作为单页 `figure` 保存，默认对整图执行 OCR；
@@ -107,7 +135,7 @@ Word Loader 支持 `.docx`，解析标题、段落、列表、表格和内嵌图
 - 文档解析和结构恢复属于本项目；向量索引与检索属于 `lob-vector`。
 - 不绕过加密、访问控制或文档权限。
 - 首期不训练 OCR、布局或视觉语言模型，重点研究推理链路和工程组合。
-- 不以单份演示效果作为完成标准，必须保留固定样例和可重复指标。
+- 本期以固定演示样例可重复运行、输出可查看且边界说明清楚为完成标准，不承诺任意文档的解析准确率或生产服务能力。
 
 ## License
 

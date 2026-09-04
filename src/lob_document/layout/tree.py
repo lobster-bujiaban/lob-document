@@ -46,7 +46,7 @@ def build_document_tree(document: SourceDocument) -> SourceDocument:
     subsection: DocumentNode | None = None
     for block in content:
         text = _normalize_text(block.text or "")
-        if not text:
+        if not text and block.figure is None and block.table is None:
             continue
         level = None
         if block.type == BlockType.HEADING:
